@@ -1,0 +1,3 @@
+# Ignorar archivos que contienen información sensible
+fetchAirbnb.py
+server.py
