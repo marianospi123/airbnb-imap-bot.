@@ -9,7 +9,7 @@ import requests
 IMAP_HOST = "imap.gmail.com"
 IMAP_USER = "marianospinelli18@gmail.com"
 IMAP_PASS = "ggtz czbh yfcy ghco"
-WEBHOOK_URL = "http://localhost:5678/webhook/airbnb"  # Cambia a tu webhook real
+WEBHOOK_URL = "https://airbnb-n8n-1.onrender.com/webhook/airbnb"  # Cambia a tu webhook real
 
 def main():
     try:
