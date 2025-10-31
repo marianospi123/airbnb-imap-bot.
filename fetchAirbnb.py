@@ -4,12 +4,13 @@ from bs4 import BeautifulSoup
 import re
 from datetime import datetime
 import requests
+import time  # 👈 necesario para el ciclo de espera
 
 # --- CONFIGURACIÓN ---
 IMAP_HOST = "imap.gmail.com"
-IMAP_USER = "marianospinelli18@gmail.com"
-IMAP_PASS = "ggtz czbh yfcy ghco"
-WEBHOOK_URL = "https://airbnb-n8n-1.onrender.com/webhook/airbnb"  # Cambia a tu webhook real
+IMAP_USER = "huespedex.ve@gmail.com"
+IMAP_PASS = "nyqy xcnc eaak czpp"
+WEBHOOK_URL = "https://airbnb-n8n-81gs.onrender.com/webhook/airbnb"  # Cambia a tu webhook real
 
 def main():
     try:
@@ -53,7 +54,6 @@ def main():
         text = soup.get_text(separator="\n")
 
         # --- EXTRAER DATOS ---
-        # Huésped
         huesped = ''
         huesped_tag = soup.find(string=re.compile(r"bienvenida a\s+(\w+)", re.IGNORECASE))
         if huesped_tag:
@@ -61,21 +61,17 @@ def main():
             if m:
                 huesped = m.group(1)
 
-        # Código de reserva
         reserva_match = re.search(r"Código de confirmación\s*([A-Z0-9]+)", text)
         reserva = reserva_match.group(1) if reserva_match else ''
 
-        # Apartamento
         apt_match = re.search(r"\n([^\n]+)\nCasa/apto\. entero", text)
         apartamento = apt_match.group(1).strip() if apt_match else ''
 
-        # Check-in y Check-out
         checkin_match = re.search(r"Llegada\s*(\w+,\s*\d+\s*\w+)", text)
         checkout_match = re.search(r"Salida\s*(\w+,\s*\d+\s*\w+)", text)
         checkin = checkin_match.group(1) if checkin_match else ''
         checkout = checkout_match.group(1) if checkout_match else ''
 
-        # Noches
         noches = 0
         noches_match = re.search(r"por (\d+) noches", text)
         if noches_match:
@@ -95,19 +91,15 @@ def main():
             except:
                 noches = 0
 
-        # Viajeros
         viajeros_match = re.search(r"Viajeros\s*([\d\s\w,]+)", text)
         viajeros = viajeros_match.group(1).strip().split('\n')[0] if viajeros_match else ''
 
-        # Total pagado (Ganas)
         total_match = re.search(r"Ganas\s*\$([\d,\.]+)", text)
         total_pagado = float(total_match.group(1).replace(',', '.')) if total_match else 0.0
 
-        # Limpieza
         limpieza_match = re.search(r"Gastos de limpieza\s*\$([\d,\.]+)", text)
         limpieza = float(limpieza_match.group(1).replace(',', '.')) if limpieza_match else 0.0
 
-        # --- RESULTADO FINAL ---
         datos = {
             'Huesped': huesped,
             'Reserva': reserva,
@@ -122,19 +114,23 @@ def main():
 
         print("Datos extraídos:", datos)
 
-        # --- ENVIAR AL WEBHOOK ---
         if WEBHOOK_URL:
             try:
                 response = requests.post(WEBHOOK_URL, json=datos)
                 if response.status_code == 200:
-                    print("Datos enviados correctamente al webhook.")
+                    print("✅ Datos enviados correctamente al webhook.")
                 else:
-                    print(f"Error enviando datos al webhook: {response.status_code}")
+                    print(f"⚠️ Error enviando datos al webhook: {response.status_code}")
             except Exception as e:
-                print("Error enviando datos al webhook:", e)
+                print("⚠️ Error enviando datos al webhook:", e)
 
     except Exception as e:
         print("⚠️ Error en fetchAirbnb:", e)
 
+# --- CICLO AUTOMÁTICO ---
 if __name__ == "__main__":
-    main()
+    while True:
+        print("\n🔄 Ejecutando fetchAirbnb...")
+        main()
+        print("⏳ Esperando 5 minutos antes de volver a revisar...\n")
+        time.sleep(300)  # 300 segundos = 5 minutos
