@@ -80,10 +80,58 @@ def compute_noches_ddmmyyyy(ci, co):
     except:
         return 0
 
+MESES_ABBR = {
+    "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
+    "jul": 7, "ago": 8, "sep": 9, "set": 9, "oct": 10, "nov": 11, "dic": 12
+}
+
+def parse_airbnb_short_date(s):
+    """
+    Ejemplos: 'jue, 29 ene' | 'dom, 1 feb'
+    Devuelve datetime (con año inferido).
+    """
+    if not s:
+        return None
+
+    s = s.lower().replace("\xa0", " ").strip()
+    # quitar día de semana: 'jue,' 'dom,'
+    s = re.sub(r"^[a-záéíóúñ]{2,4}\s*,\s*", "", s)  # deja "29 ene"
+
+    m = re.search(r"(\d{1,2})\s+([a-záéíóúñ]{3})\.?", s)
+    if not m:
+        return None
+
+    day = int(m.group(1))
+    mon_txt = m.group(2).strip(".")
+    mon = MESES_ABBR.get(mon_txt)
+    if not mon:
+        return None
+
+    now = datetime.now()
+    year = now.year
+
+    # Heurística: reservas suelen ser futuras
+    if mon < now.month - 6:
+        year += 1
+
+    return datetime(year, mon, day)
+
+def compute_noches_from_airbnb_dates(ci_raw, co_raw):
+    d1 = parse_airbnb_short_date(ci_raw)
+    d2 = parse_airbnb_short_date(co_raw)
+    if not d1 or not d2:
+        return 0
+    return max(0, (d2 - d1).days)
+
+
+
+
+
+
+
 # --------------------------
 # Parsers
 # --------------------------
-
 def parse_airbnb_from_html(html):
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(separator="\n")
@@ -101,15 +149,19 @@ def parse_airbnb_from_html(html):
     apt_match = re.search(r"\n([^\n]+)\nCasa/apto\. entero", text)
     apartamento = apt_match.group(1).strip() if apt_match else ""
 
-    checkin_match = re.search(r"Llegada\s*(\w+,\s*\d+\s*\w+)", text)
-    checkout_match = re.search(r"Salida\s*(\w+,\s*\d+\s*\w+)", text)
-    checkin = checkin_match.group(1) if checkin_match else ""
-    checkout = checkout_match.group(1) if checkout_match else ""
+    checkin_match = re.search(r"Llegada\s*(.+)", text)
+    checkout_match = re.search(r"Salida\s*(.+)", text)
+    checkin = checkin_match.group(1).strip().split("\n")[0] if checkin_match else ""
+    checkout = checkout_match.group(1).strip().split("\n")[0] if checkout_match else ""
 
-    noches = 0
-    noches_match = re.search(r"por (\d+) noches", text)
-    if noches_match:
-        noches = int(noches_match.group(1))
+    # ✅ noches: primero por fechas
+    noches = compute_noches_from_airbnb_dates(checkin, checkout)
+
+    # ✅ fallback por texto si no se pudo
+    if noches == 0:
+        m_noches = re.search(r"(\d+)\s+noch", text, re.IGNORECASE)
+        if m_noches:
+            noches = int(m_noches.group(1))
 
     viajeros_match = re.search(r"Viajeros\s*([\d\s\w,]+)", text)
     viajeros = viajeros_match.group(1).strip().split("\n")[0] if viajeros_match else ""
@@ -132,6 +184,7 @@ def parse_airbnb_from_html(html):
         "Limpieza": limpieza,
         "Apartamento": apartamento,
     }
+
 
 def parse_estei_from_html(html):
     text = html_to_text(html)
@@ -286,3 +339,27 @@ if __name__ == "__main__":
         main()
         print("⏳ Esperando 5 minutos...\n")
         time.sleep(300)
+def report_pending(mail, state, key, criteria, parser_fn, label, limit=50):
+    last_uid = state.get(key)
+    if not isinstance(last_uid, int):
+        print(f"⚠️ {label}: last_uid no inicializado.")
+        return
+
+    uids = uid_search(mail, criteria)
+    pending = sorted([u for u in uids if u > last_uid])
+
+    print(f"\n📌 {label} PENDIENTES")
+    print(f"last_uid guardado = {last_uid}")
+    print(f"pendientes (UID > last_uid) = {len(pending)}")
+
+    # Muestra un preview de los últimos N pendientes
+    sample = pending[:limit]
+    for uid_int in sample:
+        msg = uid_fetch_msg(mail, uid_int)
+        html = safe_get_html(msg) if msg else None
+        if not html:
+            print(f" - UID {uid_int}: (sin html / fetch fail)")
+            continue
+        datos = parser_fn(html)
+        print(f" - UID {uid_int}: Reserva={datos.get('Reserva')} | Apto={datos.get('Apartamento')} | CI={datos.get('Checkin')} | CO={datos.get('Checkout')}")
+
