@@ -770,5 +770,9 @@ def main_loop():
         time.sleep(POLL_SECONDS)
 
 
-if __name__ == "__main__":
+def main():
     main_loop()
+
+
+if __name__ == "__main__":
+    main()
