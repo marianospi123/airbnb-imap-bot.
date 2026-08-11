@@ -25,7 +25,7 @@ import os
 # --- CONFIGURACION ---
 IMAP_HOST = "imap.gmail.com"
 IMAP_USER = "huespedex.ve@gmail.com"
-IMAP_PASS = "nyqy xcnc eaak czpp"
+IMAP_PASS = os.getenv("IMAP_PASS", "")
 
 WEBHOOK_URL = os.getenv(
     "RESERVAS_WEBHOOK_URL",
