@@ -1,3 +1,7 @@
 # Ignorar archivos que contienen información sensible
 fetchAirbnb.py
 server.py
+
+# Artefactos locales de Python
+__pycache__/
+*.py[cod]

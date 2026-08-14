@@ -253,6 +253,31 @@ def find_money_after_exact_label(text, labels, max_next_lines=3):
     return 0.0
 
 
+def find_money_after_prefix_label(text, labels, max_next_lines=3):
+    """Busca un monto despues de una etiqueta que puede tener un sufijo."""
+    lines = get_lines(text)
+    normalized_labels = [normalize_text(label).rstrip(":") for label in labels]
+
+    for i, line in enumerate(lines):
+        line_normalized = normalize_text(line).rstrip(":")
+        if not any(
+            line_normalized == label or line_normalized.startswith(label + " ")
+            for label in normalized_labels
+        ):
+            continue
+
+        amount = extract_money_from_line(line)
+        if amount > 0:
+            return amount
+
+        for j in range(i + 1, min(i + 1 + max_next_lines, len(lines))):
+            amount = extract_money_from_line(lines[j])
+            if amount > 0:
+                return amount
+
+    return 0.0
+
+
 # =========================================================
 # HELPERS DE MONTOS AIRBNB ROBUSTOS
 # =========================================================
@@ -363,6 +388,58 @@ def find_signed_money_after_exact_label(text, labels, max_next_lines=4):
     return 0.0
 
 
+def find_money_after_anchor_and_label(
+    text,
+    anchor_labels,
+    value_labels,
+    max_anchor_distance=8,
+    max_value_distance=2,
+):
+    """
+    Busca un importe usando el contexto de una seccion.
+
+    Airbnb puede incluir dos ``Total (USD)`` en el mismo correo: el total que
+    ve el huesped y el neto del anfitrion. El neto correcto es el Total (USD)
+    que aparece despues de la tarifa de servicio para anfitriones.
+    """
+    lines = get_lines(text)
+    anchors = [normalize_text(x).rstrip(":") for x in anchor_labels]
+    values = [normalize_text(x).rstrip(":") for x in value_labels]
+
+    for i, line in enumerate(lines):
+        line_norm = normalize_text(line).rstrip(":")
+        anchor_match = any(
+            line_norm == anchor or line_norm.startswith(anchor + " ")
+            for anchor in anchors
+        )
+        if not anchor_match:
+            continue
+
+        anchor_end = min(i + 1 + max_anchor_distance, len(lines))
+        for j in range(i + 1, anchor_end):
+            value_norm = normalize_text(lines[j]).rstrip(":")
+            value_match = any(
+                value_norm == label
+                or value_norm.startswith(label + ":")
+                or value_norm.startswith(label + " ")
+                for label in values
+            )
+            if not value_match:
+                continue
+
+            amount = extract_money_from_line(lines[j])
+            if amount > 0:
+                return amount
+
+            value_end = min(j + 1 + max_value_distance, len(lines))
+            for k in range(j + 1, value_end):
+                amount = extract_money_from_line(lines[k])
+                if amount > 0:
+                    return amount
+
+    return 0.0
+
+
 def get_airbnb_host_total(content, text):
     """
     Obtiene el NETO real del anfitrión.
@@ -373,37 +450,6 @@ def get_airbnb_host_total(content, text):
     La tarifa de servicio viene negativa, por ejemplo -84.01.
     Ejemplo Amalia: 490 + 52 - 84.01 = 457.99.
     """
-
-    # "Ganas" es el pago neto que Airbnb muestra al anfitrion. Debe tener
-    # prioridad sobre encabezados de seccion como "Cobro del anfitrion",
-    # porque el primer importe despues de ese encabezado es el alojamiento
-    # bruto y no el neto.
-    direct_earnings = find_money_after_exact_label(text, [
-        "Ganas",
-        "Ganás",
-        "You earn",
-        "Your earnings",
-    ], max_next_lines=2)
-    if direct_earnings > 0:
-        return round(direct_earnings, 2)
-
-    stay_labels = [
-        "Precio total de la estadía",
-        "Precio total de la estadia",
-        "Precio total de la estancia",
-        "Precio de la estadía",
-        "Precio de la estadia",
-        "Precio de la estancia",
-        "Alojamiento",
-        "Accommodation fare",
-        "Price for stay",
-    ]
-
-    cleaning_labels = [
-        "Tarifa de limpieza",
-        "Gastos de limpieza",
-        "Cleaning fee",
-    ]
 
     host_fee_labels = [
         "Comisión de servicio del anfitrión",
@@ -419,6 +465,53 @@ def get_airbnb_host_total(content, text):
         "Host service fee",
     ]
 
+    # "Ganas" es el pago neto que Airbnb muestra al anfitrion. Debe tener
+    # prioridad sobre encabezados de seccion como "Cobro del anfitrion",
+    # porque el primer importe despues de ese encabezado es el alojamiento
+    # bruto y no el neto.
+    direct_earnings = find_money_after_exact_label(text, [
+        "Ganas",
+        "Ganás",
+        "You earn",
+        "Your earnings",
+    ], max_next_lines=2)
+    if direct_earnings > 0:
+        return round(direct_earnings, 2)
+
+    # En la plantilla nueva hay dos Total (USD). Elegimos especificamente el
+    # que sigue a la comision del anfitrion, no el total bruto del huesped.
+    contextual_total = find_money_after_anchor_and_label(
+        text,
+        host_fee_labels,
+        ["Total (USD)"],
+        max_anchor_distance=8,
+        max_value_distance=2,
+    )
+    if contextual_total > 0:
+        return round(contextual_total, 2)
+
+    stay_labels = [
+        "Precio total de la estadía",
+        "Precio total de la estadia",
+        "Precio total de la estancia",
+        "Precio de la estadía",
+        "Precio de la estadia",
+        "Precio de la estancia",
+        "Alojamiento",
+        "Tarifa de la habitación",
+        "Tarifa de la habitacion",
+        "Accommodation fare",
+        "Room rate",
+        "Room fee",
+        "Price for stay",
+    ]
+
+    cleaning_labels = [
+        "Tarifa de limpieza",
+        "Gastos de limpieza",
+        "Cleaning fee",
+    ]
+
     # 1) Preferimos componentes encontrados en la MISMA fila HTML.
     stay = find_money_in_html_row(content, stay_labels, signed=False)
     cleaning = find_money_in_html_row(content, cleaning_labels, signed=False)
@@ -427,6 +520,8 @@ def get_airbnb_host_total(content, text):
     # 2) Fallback de texto plano si alguna fila HTML no pudo leerse.
     if stay <= 0:
         stay = find_money_after_exact_label(text, stay_labels, max_next_lines=4)
+    if stay <= 0:
+        stay = find_money_after_prefix_label(text, stay_labels, max_next_lines=2)
     if cleaning <= 0:
         cleaning = find_money_after_exact_label(text, cleaning_labels, max_next_lines=4)
     if host_fee == 0:
