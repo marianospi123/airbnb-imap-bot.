@@ -9,6 +9,10 @@ import time
 import json
 import os
 
+from airbnb_imap_bot_fixed_v2 import (
+    parse_airbnb_from_content as parse_airbnb_from_content_v2,
+)
+
 # =========================================================
 # BOT RESERVAS AIRBNB + ESTEI - PRODUCCION
 # =========================================================
@@ -823,7 +827,7 @@ def main_once():
         state,
         "airbnb_last_uid",
         airbnb_criteria,
-        parse_airbnb_from_content,
+        parse_airbnb_from_content_v2,
         "Airbnb",
         is_airbnb_confirmation_subject,
     )

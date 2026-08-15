@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import airbnb_imap_bot_fixed_v2 as bot
 
@@ -54,6 +55,35 @@ class AirbnbHostTotalTests(unittest.TestCase):
         $275.50
         """
         self.assertEqual(self.parse_total(content), 275.50)
+
+    def test_jerry_uses_host_net_instead_of_guest_gross_total(self):
+        content = """
+        <table>
+          <tr><td>$339.00</td></tr>
+          <tr><td>$69.00 x 4 noches</td><td>$276.00</td></tr>
+          <tr><td>Tarifa de limpieza</td><td>$63.00</td></tr>
+          <tr><td>Tarifa por servicio para el huésped</td><td>$0.00</td></tr>
+          <tr><td>Total (USD)</td><td>$339.00</td></tr>
+          <tr><td>$286.45</td></tr>
+          <tr><td>Tarifa de la habitación por 4 noches</td><td>$276.00</td></tr>
+          <tr><td>Tarifa de limpieza</td><td>$63.00</td></tr>
+          <tr><td>Tarifa de servicio para anfitriones (15.5 %)</td><td>-$52.55</td></tr>
+          <tr><td>Total (USD)</td><td>$286.45</td></tr>
+          <tr><td>$339.00</td></tr>
+          <tr><td>$69.00 x 4 noches</td><td>$276.00</td></tr>
+          <tr><td>Tarifa de limpieza</td><td>$63.00</td></tr>
+          <tr><td>Tarifa por servicio para el huésped</td><td>$0.00</td></tr>
+        </table>
+        """
+        self.assertEqual(self.parse_total(content), 286.45)
+
+    def test_production_fetch_uses_v2_parser(self):
+        source = Path(__file__).with_name("fetchAirbnb.py").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "parse_airbnb_from_content as parse_airbnb_from_content_v2", source
+        )
+        self.assertIn("parse_airbnb_from_content_v2,", source)
 
 
 if __name__ == "__main__":
